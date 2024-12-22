@@ -3,6 +3,7 @@ package frc.robot.subsystems.swerve;
 import com.ctre.phoenix6.StatusSignal;
 import com.ctre.phoenix6.configs.MagnetSensorConfigs;
 import com.ctre.phoenix6.controls.DutyCycleOut;
+import com.ctre.phoenix6.controls.StaticBrake;
 import com.ctre.phoenix6.controls.VelocityVoltage;
 import com.ctre.phoenix6.controls.VoltageOut;
 import com.ctre.phoenix6.hardware.CANcoder;
@@ -16,9 +17,10 @@ import com.revrobotics.spark.SparkBase.ControlType;
 import com.revrobotics.spark.SparkBase.PersistMode;
 import com.revrobotics.spark.SparkBase.ResetMode;
 import com.revrobotics.spark.SparkLowLevel.MotorType;
+import com.revrobotics.spark.config.SparkMaxConfig;
+import com.revrobotics.spark.config.SparkBaseConfig.IdleMode;
 
 import edu.wpi.first.math.geometry.Rotation2d;
-import edu.wpi.first.math.kinematics.SwerveModulePosition;
 import edu.wpi.first.math.kinematics.SwerveModuleState;
 import edu.wpi.first.units.measure.Angle;
 import edu.wpi.first.units.measure.AngularVelocity;
@@ -37,9 +39,12 @@ public class SwerveModule {
   private final StatusSignal<Angle> drivePosition;
   private final StatusSignal<AngularVelocity> driveVelocity;
 
-  private final VelocityVoltage driveVelocityRequest = new VelocityVoltage(0.0);
+  private final VelocityVoltage driveVelocityRequest = new VelocityVoltage(0.0)
+    .withOverrideBrakeDurNeutral(true);
   private final DutyCycleOut driveDutyCycleRequest = new DutyCycleOut(0.0);
-  private final VoltageOut driveVoltageRequest = new VoltageOut(0.0);
+  private final VoltageOut driveVoltageRequest = new VoltageOut(0.0)
+    .withOverrideBrakeDurNeutral(true);
+  private final StaticBrake staticBrakeRequest = new StaticBrake();
 
   // Steer hardware
   private final SparkMax steerMotor;
@@ -49,9 +54,8 @@ public class SwerveModule {
   private final CANcoder steerCANCoder;
   private final StatusSignal<Angle> steerAngle;
 
-  // Position/state accessors
+  /** State (for logging) */
   public final SwerveModuleState state = new SwerveModuleState();
-  public final SwerveModulePosition position = new SwerveModulePosition();
 
   /**
    * Initializes a new Swerve Module. 
@@ -76,9 +80,11 @@ public class SwerveModule {
     steerMotorAlert = new Alert("Swerve Module " + name + " steer motor error", AlertType.kError);
     steerCANCoderAlert = new Alert("Swerve Module " + name + " steer CANCoder error", AlertType.kError);
     steerNotHomedAlert = new Alert("Swerve Module " + name + " steer encoder failed to home", AlertType.kError);
+    steerNotHomedAlert.set(true);
 
     // Initialize DRIVE MOTOR
     driveMotor = new TalonFX(driveMotorCAN, HardwareConstants.kCanivore);
+
     driveMotor.getConfigurator().apply(SwerveConstants.kDRIVE_CONFIG);
     drivePosition = driveMotor.getPosition();
     driveVelocity = driveMotor.getVelocity();
@@ -87,7 +93,7 @@ public class SwerveModule {
     steerCANCoder = new CANcoder(steerEncoderCAN, HardwareConstants.kCanivore);
 
     MagnetSensorConfigs cancoderConfig = new MagnetSensorConfigs()
-      .withAbsoluteSensorRange(SwerveConstants.kCANCODER_RANGE)
+      .withAbsoluteSensorDiscontinuityPoint(SwerveConstants.kCANCODER_RANGE)
       .withSensorDirection(SwerveConstants.kCANCODER_DIRECTION)
       .withMagnetOffset(steerCANCoderOffsetRots);
 
@@ -96,7 +102,6 @@ public class SwerveModule {
 
     // Initialize STEER MOTOR
     steerMotor = new SparkMax(steerMotorCAN, MotorType.kBrushless);
-    steerMotor.setInverted(true);
     steerMotor.configure(SwerveConstants.kSTEER_CONFIG, ResetMode.kResetSafeParameters, PersistMode.kPersistParameters);
 
     steerBuiltInEncoder = steerMotor.getEncoder();
@@ -107,41 +112,20 @@ public class SwerveModule {
     setRequest(new SwerveModuleState(), true); // zero velocity, zero angle
   }
 
-  /**
-   * @return The drive motor's velocity status signal.
-   */
-  public StatusSignal<AngularVelocity> getDriveVelocity() {
-    return driveVelocity;//.clone();
-  }
-
   public StatusSignal<Angle> getDrivePosition() {
-    return drivePosition;
+    return drivePosition.clone();
   }
 
-  /**
-   * @return The steer motor's position status signal.
-   */
   public StatusSignal<Angle> getSteerAngle() {
-    return steerAngle;//.clone();
-  }
-
-  /**
-   * Updates the position and state objects in place.
-   */
-  public void updatePositionAndState() {
-    Rotation2d angle = Rotation2d.fromRotations(steerAngle.getValueAsDouble());
-
-    position.angle = angle;
-    position.distanceMeters = drivePosition.getValueAsDouble() * SwerveConstants.kWHEEL_CIRCUMFERENCE / SwerveConstants.kDRIVE_RATIO;
-
-    state.angle = angle;
-    state.speedMetersPerSecond = driveVelocity.getValueAsDouble() * SwerveConstants.kWHEEL_CIRCUMFERENCE / SwerveConstants.kDRIVE_RATIO;
+    return steerAngle.clone();
   }
 
   /**
    * Homes the steer Neo's built-in relative encoder.
    */
   public void homeEncoder() {
+    steerAngle.refresh();
+
     System.out.printf(
       "SwerveModule %s homed from %f deg to %f deg.\n",
       name,
@@ -157,7 +141,10 @@ public class SwerveModule {
    * @param brake Whether the steer and drive motors should have brake mode enabled.
    */
   public void setBrakeMode(boolean brake) {
-    //steerMotor.setIdleMode(brake ? IdleMode.kBrake : IdleMode.kCoast); // TODO fix this
+    steerMotor.configure(
+      new SparkMaxConfig().idleMode(brake ? IdleMode.kBrake : IdleMode.kCoast), 
+      ResetMode.kNoResetSafeParameters, 
+      PersistMode.kNoPersistParameters);
     driveMotor.setNeutralMode(brake ? NeutralModeValue.Brake : NeutralModeValue.Coast);
   }
 
@@ -167,25 +154,31 @@ public class SwerveModule {
    */
   public void setRequest(SwerveModuleState request, boolean closedLoop) {
     // Optimize
+    steerAngle.refresh();
     Rotation2d currentAngle = Rotation2d.fromRotations(steerAngle.getValueAsDouble());
     request.optimize(currentAngle);
     request.cosineScale(currentAngle);
 
-    // Set angle
-    steerPID.setReference(
-      request.angle.getRotations() * SwerveConstants.kSTEER_RATIO, ControlType.kPosition);
-
-    // Set velocity
-    if (closedLoop) {
-      // Closed loop velocity control (auto)
-      driveMotor.setControl(driveVelocityRequest.withVelocity(
-        request.speedMetersPerSecond / SwerveConstants.kWHEEL_CIRCUMFERENCE * SwerveConstants.kDRIVE_RATIO
-      ));
+    if (Math.abs(request.speedMetersPerSecond) <= 0.05) {
+      // Apply dead band
+      driveMotor.setControl(staticBrakeRequest);
     } else {
-      // Open loop control (teleop)
-      driveMotor.setControl(driveDutyCycleRequest.withOutput(
-        request.speedMetersPerSecond / SwerveConstants.kMAX_WHEEL_VELOCITY
-      ));
+      // Set angle
+      steerPID.setReference(
+        request.angle.getRotations() * SwerveConstants.kSTEER_RATIO, ControlType.kPosition);
+
+      // Set velocity
+      if (closedLoop) {
+        // Closed loop velocity control (auto)
+        driveMotor.setControl(driveVelocityRequest.withVelocity(
+          request.speedMetersPerSecond / SwerveConstants.kWHEEL_CIRCUMFERENCE
+        ));
+      } else {
+        // Open loop control (teleop)
+        driveMotor.setControl(driveDutyCycleRequest.withOutput(
+          request.speedMetersPerSecond / SwerveConstants.kMAX_WHEEL_VELOCITY
+        ));
+      }
     }
   }
 
@@ -198,11 +191,14 @@ public class SwerveModule {
     driveMotor.setControl(driveVoltageRequest.withOutput(voltage));
   }
 
-  /**
-   * Logs data to a DataLog.
-   */
-  public void log() {
+  public void updateSwerveState() {
+    // Refresh signals
+    driveVelocity.refresh();
+    steerAngle.refresh();
 
+    // Update state
+    state.angle = Rotation2d.fromRotations(steerAngle.getValueAsDouble());
+    state.speedMetersPerSecond = driveVelocity.getValueAsDouble() * SwerveConstants.kWHEEL_CIRCUMFERENCE;
   }
 
   /**

@@ -6,16 +6,44 @@ package frc.robot;
 
 import edu.wpi.first.wpilibj2.command.Command;
 import edu.wpi.first.wpilibj2.command.Commands;
-import frc.robot.subsystems.swerve.SwerveModule;
+import edu.wpi.first.wpilibj2.command.button.CommandXboxController;
+import frc.robot.commands.TeleopDriveCommand;
+import frc.robot.subsystems.swerve.SwerveDrive;
+import frc.robot.util.Dashboard;
 
 public class RobotContainer {
-  private SwerveModule mod1 = new SwerveModule("Test", 2, 3, 4, -0.3801);
+  // Subsystems
+  private SwerveDrive base = new SwerveDrive();
+
+  // Controllers
+  private CommandXboxController controller = new CommandXboxController(0);
+  private Dashboard dashboard = new Dashboard(base);
 
   public RobotContainer() {
     configureBindings();
   }
 
-  private void configureBindings() {}
+  private void configureBindings() {
+    // SwerveDrive default command (teleop driving)
+    base.setDefaultCommand(
+      new TeleopDriveCommand(
+        base, 
+        controller::getLeftX, 
+        controller::getLeftY, 
+        controller::getRightX, 
+        controller.leftTrigger())
+    );
+  }
+
+  /** Logs everything, called periodically */
+  public void checkHardware() {
+    base.checkHardware();
+  }
+
+  /** Logs everything, called periodically */
+  public void log() {
+    base.log();
+  }
 
   public Command getAutonomousCommand() {
     return Commands.print("No autonomous command configured");

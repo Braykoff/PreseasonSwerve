@@ -9,12 +9,20 @@ import com.ctre.phoenix6.StatusCode;
 import edu.wpi.first.math.Matrix;
 import edu.wpi.first.math.estimator.SwerveDrivePoseEstimator;
 import edu.wpi.first.math.geometry.Pose2d;
+import edu.wpi.first.math.geometry.Rotation2d;
 import edu.wpi.first.math.kinematics.SwerveDriveKinematics;
 import edu.wpi.first.math.kinematics.SwerveModulePosition;
-import edu.wpi.first.math.kinematics.SwerveModuleState;
 import edu.wpi.first.math.numbers.N1;
 import edu.wpi.first.math.numbers.N3;
+import edu.wpi.first.wpilibj.ADIS16470_IMU;
+import edu.wpi.first.wpilibj.DriverStation;
 import edu.wpi.first.wpilibj.Threads;
+import edu.wpi.first.wpilibj.ADIS16470_IMU.IMUAxis;
+import edu.wpi.first.wpilibj.DriverStation.Alliance;
+import edu.wpi.first.wpilibj.SPI.Port;
+
+import java.util.Optional;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * 4-module SwerveOdometry thread based off of CTRE's SwerveBase.
@@ -23,35 +31,55 @@ public class SwerveOdometry {
     private static final int UpdateFreq = 250;
 
     private final Thread thread;
-    private final SwerveModule[] modules;
+    private final ReadWriteLock stateLock = new ReentrantReadWriteLock();
+    private final AtomicInteger successfulDAQs = new AtomicInteger();
+    private final AtomicInteger failedDAQs = new AtomicInteger();
+
+    private final ADIS16470_IMU imu;
+
+    private final SwerveModulePosition[] swervePositions;
     private final BaseStatusSignal[] allSignals;
+    private final SwerveDrivePoseEstimator poseEstimator;
+    private boolean isRedAlliance = false; // Cached later
 
-    // Public field accessors
-    public final ReadWriteLock stateLock = new ReentrantReadWriteLock();
-    public final SwerveDrivePoseEstimator poseEstimator;
-    public final SwerveModuleState[] swerveStates = new SwerveModuleState[4];
-    public final SwerveModulePosition[] swervePositions = new SwerveModulePosition[4];
-
-    public SwerveOdometry(SwerveModule[] modules, SwerveDriveKinematics kinematics) {
-        this.modules = modules;
-        
+    /**
+     * Automatically starts odometry thread.
+     * @param modules
+     * @param kinematics
+     */
+    public SwerveOdometry(SwerveModule[] modules, SwerveDriveKinematics kinematics) {        
         // Init thread
         thread = new Thread(this::run);
         thread.setDaemon(true);
 
-        // Get status signals, positions, and states (positions and states are updated in-place)
-        allSignals = new BaseStatusSignal[4*3];
-        for (int m = 0; m < 4; m++) {
-            allSignals[m*4+0] = modules[m].getDrivePosition();
-            allSignals[m*4+1] = modules[m].getDriveVelocity();
-            allSignals[m*4+2] = modules[m].getSteerAngle();
+        // Init IMU
+        imu = new ADIS16470_IMU(
+            SwerveConstants.kGYRO_YAW,
+            SwerveConstants.kGYRO_PITCH,
+            SwerveConstants.kGYRO_ROLL,
+            Port.kOnboardCS0,
+            SwerveConstants.kGYRO_CALIBRATION);
 
-            swervePositions[m] = modules[m].position;
-            swerveStates[m] = modules[m].state;
+        // Get status signal and positions
+        allSignals = new BaseStatusSignal[4*2];
+        swervePositions = new SwerveModulePosition[4];
+
+        for (int m = 0; m < 4; m++) {
+            allSignals[m*2+0] = modules[m].getDrivePosition();
+            allSignals[m*2+1] = modules[m].getSteerAngle();
+
+            swervePositions[m] = new SwerveModulePosition(
+                allSignals[m*2+0].getValueAsDouble() * SwerveConstants.kWHEEL_CIRCUMFERENCE, 
+                Rotation2d.fromRotations(allSignals[m*2+1].getValueAsDouble())
+            );
         }
 
         // Init pose estimator
-        poseEstimator = new SwerveDrivePoseEstimator(kinematics, null, swervePositions, Pose2d.kZero);
+        poseEstimator = new SwerveDrivePoseEstimator(
+            kinematics, 
+            Rotation2d.fromDegrees(imu.getAngle(IMUAxis.kYaw)), 
+            swervePositions, 
+            Pose2d.kZero);
 
         // Start the thread immediately
         thread.start();
@@ -63,13 +91,16 @@ public class SwerveOdometry {
     public void resetPosition(Pose2d newPosition) {
         try {
             stateLock.writeLock().lock();
-            poseEstimator.resetPosition(null, swervePositions, newPosition);
+            poseEstimator.resetPosition(
+                Rotation2d.fromDegrees(imu.getAngle(IMUAxis.kYaw)), 
+                swervePositions, // this should be updated in place
+                newPosition);
         } finally {
             stateLock.writeLock().unlock();
         }
     }
 
-    public void run() {
+    private void run() {
         // Init update frequency
         BaseStatusSignal.setUpdateFrequencyForAll(UpdateFreq, allSignals);
         Threads.setCurrentThreadPriority(true, 1); // Priority 1
@@ -79,22 +110,38 @@ public class SwerveOdometry {
             // Wait up to twice period of update frequency
             StatusCode status = BaseStatusSignal.waitForAll(2.0 / UpdateFreq, allSignals);
 
+            if (status.isOK()) {
+                successfulDAQs.incrementAndGet();
+            } else {
+                failedDAQs.incrementAndGet();
+            }
+
             try {
                 stateLock.writeLock().lock();
 
-                // Update position and states
+                // Update swerve module positions
                 for (int m = 0; m < 4; m++) {
-                    modules[m].updatePositionAndState();
+                    swervePositions[m].distanceMeters = 
+                        allSignals[m*2+0].getValueAsDouble() * SwerveConstants.kWHEEL_CIRCUMFERENCE;
+                    swervePositions[m].angle = 
+                        Rotation2d.fromRotations(allSignals[m*2+1].getValueAsDouble());
                 }
 
-                poseEstimator.update(null, swervePositions);
+                // Update estimator
+                poseEstimator.update(
+                    Rotation2d.fromDegrees(imu.getAngle(IMUAxis.kYaw)), 
+                    swervePositions);
             } finally {
                 stateLock.writeLock().unlock();
             }
         }
     }
 
-    public Pose2d getPosition() {
+    /**
+     * @see https://docs.wpilib.org/en/stable/docs/software/basic-programming/coordinate-system.html#always-blue-origin
+     * @return The most recent position estimation, relative to the field.
+     */
+    public Pose2d getFieldRelativePosition() {
         try {
             stateLock.readLock().lock();
             return poseEstimator.getEstimatedPosition();
@@ -103,6 +150,45 @@ public class SwerveOdometry {
         }
     }
 
+    /**
+     * @see https://docs.wpilib.org/en/stable/docs/software/basic-programming/coordinate-system.html#robot-drive-kinematics
+     * @return The most recent position estimation, relative to the alliance.
+     */
+    public Pose2d getAllianceRelativePosition() {
+        Pose2d pose = getFieldRelativePosition();
+
+        if (isRedAlliance)
+            pose = Pose2d.kZero; // TODO invert pose, once field is released
+
+        return pose;
+    }
+
+    /**
+     * @return The number of successful data acquisitions.
+     */
+    public int getSuccessfulDAQs() {
+        return successfulDAQs.get();
+    }
+
+    /**
+     * @return The number of failed data acquisitions.
+     */
+    public int getFailedDAQs() {
+        return failedDAQs.get();
+    }
+
+    public void cacheAllianceColor() {
+        Optional<Alliance> alliance = DriverStation.getAlliance();
+        isRedAlliance = (alliance.isPresent() && alliance.get().equals(Alliance.Red));
+        
+        System.out.printf("Odometry thread cached isRedAlliance: %b\n", isRedAlliance);
+    }
+
+    /**
+     * @param visionRobotPoseMeters Position of robot (center) from vision estimation.
+     * @param timestampSeconds The timestamp of the vision estimation.
+     * @param visionMeasurementStdDevs The standard deviations of the vision estimation.
+     */
     public void addVisionMeasurement(
         Pose2d visionRobotPoseMeters, 
         double timestampSeconds, 

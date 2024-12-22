@@ -3,6 +3,10 @@ package frc.robot;
 import com.ctre.phoenix6.CANBus;
 
 public final class Constants {
+  public static final class BuildConstants {
+    public static final boolean kPUBLISH_EVERYTHING = true;
+  }
+  
   public static final class HardwareConstants {
     public static final int kPDH_CAN = 1;
 
@@ -20,6 +24,6 @@ public final class Constants {
     public static final int kRR_STEER_NEO_CAN = 12;
     public static final int kRR_STEER_CANCODER_CAN = 13;
 
-    public static final CANBus kCanivore = new CANBus("rio");
+    public static final CANBus kCanivore = new CANBus("CANivore");
   }
 }
