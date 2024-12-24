@@ -1,5 +1,7 @@
 package frc.robot.subsystems.swerve;
 
+import java.util.Optional;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 
@@ -15,20 +17,18 @@ import edu.wpi.first.math.kinematics.SwerveModulePosition;
 import edu.wpi.first.math.numbers.N1;
 import edu.wpi.first.math.numbers.N3;
 import edu.wpi.first.wpilibj.ADIS16470_IMU;
-import edu.wpi.first.wpilibj.DriverStation;
-import edu.wpi.first.wpilibj.Threads;
+import edu.wpi.first.wpilibj.ADIS16470_IMU.CalibrationTime;
 import edu.wpi.first.wpilibj.ADIS16470_IMU.IMUAxis;
+import edu.wpi.first.wpilibj.DriverStation;
 import edu.wpi.first.wpilibj.DriverStation.Alliance;
 import edu.wpi.first.wpilibj.SPI.Port;
-
-import java.util.Optional;
-import java.util.concurrent.atomic.AtomicInteger;
+import edu.wpi.first.wpilibj.Threads;
 
 /**
  * 4-module SwerveOdometry thread based off of CTRE's SwerveBase.
  */
-public class SwerveOdometry {
-    private static final int UpdateFreq = 250;
+public final class SwerveOdometry {
+    private static final int UPDATE_FREQ = 250;
 
     private final Thread thread;
     private final ReadWriteLock stateLock = new ReentrantReadWriteLock();
@@ -54,11 +54,11 @@ public class SwerveOdometry {
 
         // Init IMU
         imu = new ADIS16470_IMU(
-            SwerveConstants.kGYRO_YAW,
-            SwerveConstants.kGYRO_PITCH,
-            SwerveConstants.kGYRO_ROLL,
+            SwerveConstants.GYRO_YAW,
+            SwerveConstants.GYRO_PITCH,
+            SwerveConstants.GYRO_ROLL,
             Port.kOnboardCS0,
-            SwerveConstants.kGYRO_CALIBRATION);
+            CalibrationTime._4s);
 
         // Get status signal and positions
         allSignals = new BaseStatusSignal[4*2];
@@ -69,7 +69,7 @@ public class SwerveOdometry {
             allSignals[m*2+1] = modules[m].getSteerAngle();
 
             swervePositions[m] = new SwerveModulePosition(
-                allSignals[m*2+0].getValueAsDouble() * SwerveConstants.kWHEEL_CIRCUMFERENCE, 
+                allSignals[m*2+0].getValueAsDouble() * SwerveConstants.WHEEL_CIRCUMFERENCE, 
                 Rotation2d.fromRotations(allSignals[m*2+1].getValueAsDouble())
             );
         }
@@ -80,8 +80,14 @@ public class SwerveOdometry {
             Rotation2d.fromDegrees(imu.getAngle(IMUAxis.kYaw)), 
             swervePositions, 
             Pose2d.kZero);
+    }
 
-        // Start the thread immediately
+    /** Start the odometry thread. */
+    public void start() {
+        if (thread.isAlive()) {
+            DriverStation.reportError("SwerveOdometry.start() called multiple times", false);
+        }
+
         thread.start();
     }
 
@@ -102,13 +108,13 @@ public class SwerveOdometry {
 
     private void run() {
         // Init update frequency
-        BaseStatusSignal.setUpdateFrequencyForAll(UpdateFreq, allSignals);
+        BaseStatusSignal.setUpdateFrequencyForAll(UPDATE_FREQ, allSignals);
         Threads.setCurrentThreadPriority(true, 1); // Priority 1
 
         // Run as fast as possible
         while (true) {
             // Wait up to twice period of update frequency
-            StatusCode status = BaseStatusSignal.waitForAll(2.0 / UpdateFreq, allSignals);
+            StatusCode status = BaseStatusSignal.waitForAll(2.0 / UPDATE_FREQ, allSignals);
 
             if (status.isOK()) {
                 successfulDAQs.incrementAndGet();
@@ -122,7 +128,7 @@ public class SwerveOdometry {
                 // Update swerve module positions
                 for (int m = 0; m < 4; m++) {
                     swervePositions[m].distanceMeters = 
-                        allSignals[m*2+0].getValueAsDouble() * SwerveConstants.kWHEEL_CIRCUMFERENCE;
+                        allSignals[m*2+0].getValueAsDouble() * SwerveConstants.WHEEL_CIRCUMFERENCE;
                     swervePositions[m].angle = 
                         Rotation2d.fromRotations(allSignals[m*2+1].getValueAsDouble());
                 }
@@ -134,6 +140,11 @@ public class SwerveOdometry {
             } finally {
                 stateLock.writeLock().unlock();
             }
+
+            // Use this to determine which axis is yaw:
+            /*System.out.printf(
+                "IMU: Yaw: %f, Pitch: %f, Roll: %f\n", 
+                imu.getAngle(), imu.getAngle(IMUAxis.kPitch), imu.getAngle(IMUAxis.kRoll));*/
         }
     }
 

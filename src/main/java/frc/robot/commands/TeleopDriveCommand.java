@@ -8,9 +8,9 @@ import frc.robot.subsystems.swerve.SwerveConstants;
 import frc.robot.subsystems.swerve.SwerveDrive;
 
 public class TeleopDriveCommand extends Command {
-    private SwerveDrive drive;
-    private Supplier<Double> ySupplier, xSupplier, thetaSupplier;
-    private BooleanSupplier fastMode;
+    private final SwerveDrive drive;
+    private final Supplier<Double> ySupplier, xSupplier, thetaSupplier;
+    private final BooleanSupplier fastMode;
 
     /**
      * @param drive
@@ -38,9 +38,9 @@ public class TeleopDriveCommand extends Command {
     @Override
     public void execute() {
         drive.drive(
-            ySupplier.get() * (fastMode.getAsBoolean() ? SwerveConstants.kFAST_TRANSLATIONAL_SPEED : SwerveConstants.kSLOW_TRANSLATIONAL_SPEED), 
-            xSupplier.get() * (fastMode.getAsBoolean() ? SwerveConstants.kFAST_TRANSLATIONAL_SPEED : SwerveConstants.kSLOW_TRANSLATIONAL_SPEED), 
-            thetaSupplier.get() * (fastMode.getAsBoolean() ? SwerveConstants.kFAST_ROTATIONAL_SPEED : SwerveConstants.kSLOW_ROTATIONAL_SPEED), 
+            ySupplier.get() * (fastMode.getAsBoolean() ? SwerveConstants.FAST_TRANSLATIONAL_SPEED : SwerveConstants.SLOW_TRANSLATIONAL_SPEED), 
+            xSupplier.get() * (fastMode.getAsBoolean() ? SwerveConstants.FAST_TRANSLATIONAL_SPEED : SwerveConstants.SLOW_TRANSLATIONAL_SPEED), 
+            thetaSupplier.get() * (fastMode.getAsBoolean() ? SwerveConstants.FAST_ROTATIONAL_SPEED : SwerveConstants.SLOW_ROTATIONAL_SPEED), 
             false, 
             true
         );

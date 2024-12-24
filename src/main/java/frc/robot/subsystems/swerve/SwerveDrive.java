@@ -9,38 +9,40 @@ import edu.wpi.first.networktables.NetworkTable;
 import edu.wpi.first.networktables.NetworkTableInstance;
 import edu.wpi.first.networktables.StructArrayPublisher;
 import edu.wpi.first.networktables.StructPublisher;
+import edu.wpi.first.units.measure.Voltage;
 import edu.wpi.first.util.datalog.IntegerLogEntry;
 import edu.wpi.first.util.datalog.StructArrayLogEntry;
 import edu.wpi.first.util.datalog.StructLogEntry;
 import edu.wpi.first.wpilibj.DataLogManager;
 import edu.wpi.first.wpilibj2.command.Subsystem;
+import edu.wpi.first.wpilibj2.command.sysid.SysIdRoutine;
 import frc.robot.Constants.BuildConstants;
 import frc.robot.Constants.HardwareConstants;
 
-public class SwerveDrive implements Subsystem {
+public final class SwerveDrive implements Subsystem {
   // Swerve Modules
   private final SwerveModule[] modules = {
     new SwerveModule(
         "FL", 
-        HardwareConstants.kFL_DRIVE_KRAKEN_CAN, HardwareConstants.kFL_STEER_NEO_CAN, 
-        HardwareConstants.kFL_STEER_CANCODER_CAN, SwerveConstants.kFL_CANCODER_OFFSET
+        HardwareConstants.FL_DRIVE_KRAKEN_CAN, HardwareConstants.FL_STEER_NEO_CAN, 
+        HardwareConstants.FL_STEER_CANCODER_CAN, SwerveConstants.FL_CANCODER_OFFSET
     ), new SwerveModule(
         "FR", 
-        HardwareConstants.kFR_DRIVE_KRAKEN_CAN, HardwareConstants.kFR_STEER_NEO_CAN, 
-        HardwareConstants.kFR_STEER_CANCODER_CAN, SwerveConstants.kFR_CANCODER_OFFSET
+        HardwareConstants.FR_DRIVE_KRAKEN_CAN, HardwareConstants.FR_STEER_NEO_CAN, 
+        HardwareConstants.FR_STEER_CANCODER_CAN, SwerveConstants.FR_CANCODER_OFFSET
     ), new SwerveModule(
         "RL", 
-        HardwareConstants.kRL_DRIVE_KRAKEN_CAN, HardwareConstants.kRL_STEER_NEO_CAN, 
-        HardwareConstants.kRL_STEER_CANCODER_CAN, SwerveConstants.kRL_CANCODER_OFFSET
+        HardwareConstants.RL_DRIVE_KRAKEN_CAN, HardwareConstants.RL_STEER_NEO_CAN, 
+        HardwareConstants.RL_STEER_CANCODER_CAN, SwerveConstants.RL_CANCODER_OFFSET
     ), new SwerveModule(
         "FL", 
-        HardwareConstants.kRR_DRIVE_KRAKEN_CAN, HardwareConstants.kRR_STEER_NEO_CAN, 
-        HardwareConstants.kRR_STEER_CANCODER_CAN, SwerveConstants.kRR_CANCODER_OFFSET
+        HardwareConstants.RR_DRIVE_KRAKEN_CAN, HardwareConstants.RR_STEER_NEO_CAN, 
+        HardwareConstants.RR_STEER_CANCODER_CAN, SwerveConstants.RR_CANCODER_OFFSET
     )
   };
 
   // Kinematics
-  private final SwerveDriveKinematics kinematics = new SwerveDriveKinematics(SwerveConstants.kPOSITIONS);
+  private final SwerveDriveKinematics kinematics = new SwerveDriveKinematics(SwerveConstants.POSITIONS);
 
   // NT Logging
   private final StructArrayPublisher<SwerveModuleState> statePublisher;
@@ -62,18 +64,28 @@ public class SwerveDrive implements Subsystem {
   };
 
   // Pose estimation
-  private SwerveOdometry odometry = new SwerveOdometry(modules, kinematics);
+  private final SwerveOdometry odometry = new SwerveOdometry(modules, kinematics);
+  private SysIdRoutine routine;
 
   public SwerveDrive() {
-    // Init NT publishers if used
-    if (BuildConstants.kPUBLISH_EVERYTHING) {
+    if (BuildConstants.PUBLISH_EVERYTHING) {
+      // Init NT publishers
       NetworkTable ntTable = NetworkTableInstance.getDefault().getTable("Swerve");
 
       statePublisher = ntTable.getStructArrayTopic("State", SwerveModuleState.struct).publish();
       posePublisher = ntTable.getStructTopic("Pose", Pose2d.struct).publish();
       successfulDAQPublisher = ntTable.getIntegerTopic("Successful_DAQs").publish();
       failedDAQPublisher = ntTable.getIntegerTopic("Failed_DAQs").publish();
+    } else {
+      // Do not init NT publishers
+      statePublisher = null;
+      posePublisher = null;
+      successfulDAQPublisher = null;
+      failedDAQPublisher = null;
     }
+
+    // Start odometry thread
+    odometry.start();
   }
 
   /**
@@ -91,11 +103,28 @@ public class SwerveDrive implements Subsystem {
       : new ChassisSpeeds(x, y, theta);
 
     SwerveModuleState[] states = kinematics.toSwerveModuleStates(speeds);
-    SwerveDriveKinematics.desaturateWheelSpeeds(states, SwerveConstants.kMAX_WHEEL_VELOCITY);
+    SwerveDriveKinematics.desaturateWheelSpeeds(states, SwerveConstants.MAX_WHEEL_VELOCITY);
 
     for (int m = 0; m < 4; m++) {
       modules[m].setRequest(states[m], closedLoop);
     }
+  }
+
+  /** Gets routine for SysID characterization */
+  public SysIdRoutine getRoutine() {
+    if (routine == null) {
+      // Init routine
+      routine = new SysIdRoutine(
+        new SysIdRoutine.Config(), 
+        new SysIdRoutine.Mechanism((Voltage v) -> {
+          for (int m = 0; m < 4; m++) {
+            modules[m].setVoltageRequest(m);
+          }
+        }, null, this)
+      );
+    }
+
+    return routine;
   }
 
   /** Homes all swerve modules. Run in pregame. */
@@ -124,7 +153,7 @@ public class SwerveDrive implements Subsystem {
     successfulDAQLogger.append(odometry.getSuccessfulDAQs());
     failedDAQLogger.append(odometry.getFailedDAQs());
 
-    if (BuildConstants.kPUBLISH_EVERYTHING) {
+    if (BuildConstants.PUBLISH_EVERYTHING) {
       statePublisher.set(loggedStates);
       posePublisher.set(pose);
       successfulDAQPublisher.set(odometry.getSuccessfulDAQs());

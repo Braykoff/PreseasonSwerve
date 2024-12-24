@@ -27,10 +27,15 @@
   ],
   "java.test.defaultConfig": "WPIlibUnitTests",
   "cSpell.words": [
+    "ADIS",
     "Brushless",
     "CANCODER",
     "Canivore",
+    "CTRE",
+    "Devs",
     "Odometry",
+    "Pregamed",
+    "quasistatic",
     "teleop"
   ]
 }
