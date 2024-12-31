@@ -24,16 +24,16 @@ public final class SwerveConstants {
 
   // Max drive speeds
   public static final double FAST_TRANSLATIONAL_SPEED = 5.0; // m/s
-  public static final double FAST_ROTATIONAL_SPEED = 2.0 * 2.0 * Math.PI; // rad/s
+  public static final double FAST_ROTATIONAL_SPEED = 3.0 * 2.0 * Math.PI; // rad/s
 
   public static final double SLOW_TRANSLATIONAL_SPEED = FAST_TRANSLATIONAL_SPEED * 0.5;
   public static final double SLOW_ROTATIONAL_SPEED = FAST_TRANSLATIONAL_SPEED * 0.5;
 
   // CANCoder magnet offsets (in rotations, CCW+, -0.5 to 0.5 range)
-  public static final double FL_CANCODER_OFFSET = 0.1;
-  public static final double FR_CANCODER_OFFSET = 0.1;
-  public static final double RL_CANCODER_OFFSET = 0.1;
-  public static final double RR_CANCODER_OFFSET = 0.1;
+  public static final double FL_CANCODER_OFFSET = -0.0439 * -1.0;
+  public static final double FR_CANCODER_OFFSET = -0.4397 * -1.0;
+  public static final double RL_CANCODER_OFFSET = 0.0051 * -1.0;
+  public static final double RR_CANCODER_OFFSET = -0.128 * -1.0;
 
   public static final double CANCODER_RANGE = 0.5;
   public static final SensorDirectionValue CANCODER_DIRECTION = 
@@ -77,9 +77,9 @@ public final class SwerveConstants {
     );
 
   // ADIS16470 Gyro
-  public static final IMUAxis GYRO_YAW = IMUAxis.kX;
-  public static final IMUAxis GYRO_PITCH = IMUAxis.kY;
-  public static final IMUAxis GYRO_ROLL = IMUAxis.kZ;
+  public static final IMUAxis GYRO_YAW = IMUAxis.kZ;
+  public static final IMUAxis GYRO_PITCH = IMUAxis.kX;
+  public static final IMUAxis GYRO_ROLL = IMUAxis.kY;
 
   // Base size
   public static final Translation2d kBASE_DIMENSIONS = 

@@ -32,9 +32,9 @@ public class RobotContainer {
     base.setDefaultCommand(
       new TeleopDriveCommand(
         base, 
-        controller::getLeftX, 
-        controller::getLeftY, 
-        controller::getRightX, 
+        () -> -controller.getLeftX(), 
+        () -> -controller.getLeftY(), 
+        () -> -controller.getRightX(), 
         controller.leftTrigger())
     );
   }

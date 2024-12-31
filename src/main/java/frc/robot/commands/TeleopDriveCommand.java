@@ -37,10 +37,19 @@ public class TeleopDriveCommand extends Command {
 
     @Override
     public void execute() {
+        double x = xSupplier.get();
+        double y = ySupplier.get();
+        double theta = thetaSupplier.get();
+
+        // Apply deadbands
+        x = Math.abs(x) > 0.075 ? x : 0.0;
+        y = Math.abs(y) > 0.075 ? x : 0.0;
+        theta = Math.abs(theta) > 0.075 ? x : 0.0;
+
         drive.drive(
-            ySupplier.get() * (fastMode.getAsBoolean() ? SwerveConstants.FAST_TRANSLATIONAL_SPEED : SwerveConstants.SLOW_TRANSLATIONAL_SPEED), 
-            xSupplier.get() * (fastMode.getAsBoolean() ? SwerveConstants.FAST_TRANSLATIONAL_SPEED : SwerveConstants.SLOW_TRANSLATIONAL_SPEED), 
-            thetaSupplier.get() * (fastMode.getAsBoolean() ? SwerveConstants.FAST_ROTATIONAL_SPEED : SwerveConstants.SLOW_ROTATIONAL_SPEED), 
+            y * (fastMode.getAsBoolean() ? SwerveConstants.FAST_TRANSLATIONAL_SPEED : SwerveConstants.SLOW_TRANSLATIONAL_SPEED), 
+            x * (fastMode.getAsBoolean() ? SwerveConstants.FAST_TRANSLATIONAL_SPEED : SwerveConstants.SLOW_TRANSLATIONAL_SPEED), 
+            theta * (fastMode.getAsBoolean() ? SwerveConstants.FAST_ROTATIONAL_SPEED : SwerveConstants.SLOW_ROTATIONAL_SPEED), 
             false, 
             true
         );

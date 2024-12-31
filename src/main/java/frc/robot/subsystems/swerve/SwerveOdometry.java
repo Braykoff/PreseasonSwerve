@@ -143,8 +143,8 @@ public final class SwerveOdometry {
 
             // Use this to determine which axis is yaw:
             /*System.out.printf(
-                "IMU: Yaw: %f, Pitch: %f, Roll: %f\n", 
-                imu.getAngle(), imu.getAngle(IMUAxis.kPitch), imu.getAngle(IMUAxis.kRoll));*/
+                "IMU: X: %f, Y: %f, Z: %f\n", 
+                imu.getAngle(IMUAxis.kX), imu.getAngle(IMUAxis.kY), imu.getAngle(IMUAxis.kZ));*/
         }
     }
 

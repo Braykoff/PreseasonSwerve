@@ -98,12 +98,12 @@ public final class SwerveDrive implements Subsystem {
   public void drive(double y, double x, double theta, boolean closedLoop, boolean fieldOriented) {
     ChassisSpeeds speeds = fieldOriented ?
       // Field oriented driving
-      ChassisSpeeds.fromRobotRelativeSpeeds(x, y, theta, odometry.getFieldRelativePosition().getRotation())
+      ChassisSpeeds.fromRobotRelativeSpeeds(x, y, theta, odometry.getFieldRelativePosition().getRotation().unaryMinus())
       // Robot oriented driving
       : new ChassisSpeeds(x, y, theta);
 
     SwerveModuleState[] states = kinematics.toSwerveModuleStates(speeds);
-    SwerveDriveKinematics.desaturateWheelSpeeds(states, SwerveConstants.MAX_WHEEL_VELOCITY);
+    //SwerveDriveKinematics.desaturateWheelSpeeds(states, SwerveConstants.MAX_WHEEL_VELOCITY);
 
     for (int m = 0; m < 4; m++) {
       modules[m].setRequest(states[m], closedLoop);

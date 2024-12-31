@@ -42,8 +42,7 @@ public final class SwerveModule {
   private final VelocityVoltage driveVelocityRequest = new VelocityVoltage(0.0)
     .withOverrideBrakeDurNeutral(true);
   private final DutyCycleOut driveDutyCycleRequest = new DutyCycleOut(0.0);
-  private final VoltageOut driveVoltageRequest = new VoltageOut(0.0)
-    .withOverrideBrakeDurNeutral(true);
+  private final VoltageOut driveVoltageRequest = new VoltageOut(0.0);
   private final StaticBrake staticBrakeRequest = new StaticBrake();
 
   // Steer hardware
@@ -159,26 +158,21 @@ public final class SwerveModule {
     request.optimize(currentAngle);
     request.cosineScale(currentAngle);
 
-    if (Math.abs(request.speedMetersPerSecond) <= 0.05) {
-      // Apply dead band
-      driveMotor.setControl(staticBrakeRequest);
-    } else {
-      // Set angle
-      steerPID.setReference(
-        request.angle.getRotations() * SwerveConstants.STEER_RATIO, ControlType.kPosition);
+    // Set angle
+    steerPID.setReference(
+      request.angle.getRotations() * SwerveConstants.STEER_RATIO, ControlType.kPosition);
 
-      // Set velocity
-      if (closedLoop) {
-        // Closed loop velocity control (auto)
-        driveMotor.setControl(driveVelocityRequest.withVelocity(
-          request.speedMetersPerSecond / SwerveConstants.WHEEL_CIRCUMFERENCE
-        ));
-      } else {
-        // Open loop control (teleop)
-        driveMotor.setControl(driveDutyCycleRequest.withOutput(
-          request.speedMetersPerSecond / SwerveConstants.MAX_WHEEL_VELOCITY
-        ));
-      }
+    // Set velocity
+    if (closedLoop) {
+      // Closed loop velocity control (auto)
+      driveMotor.setControl(driveVelocityRequest.withVelocity(
+        request.speedMetersPerSecond / SwerveConstants.WHEEL_CIRCUMFERENCE
+      ));
+    } else {
+      // Open loop control (teleop)
+      driveMotor.setControl(driveDutyCycleRequest.withOutput(
+        request.speedMetersPerSecond / SwerveConstants.MAX_WHEEL_VELOCITY
+      ));
     }
   }
 
@@ -198,6 +192,7 @@ public final class SwerveModule {
 
     // Update state
     state.angle = Rotation2d.fromRotations(steerAngle.getValueAsDouble());
+    //state.angle = Rotation2d.fromRotations(steerBuiltInEncoder.getPosition() / SwerveConstants.STEER_RATIO);
     state.speedMetersPerSecond = driveVelocity.getValueAsDouble() * SwerveConstants.WHEEL_CIRCUMFERENCE;
   }
 
