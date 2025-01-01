@@ -118,7 +118,7 @@ public final class SwerveDrive implements Subsystem {
         new SysIdRoutine.Config(), 
         new SysIdRoutine.Mechanism((Voltage v) -> {
           for (int m = 0; m < 4; m++) {
-            modules[m].setVoltageRequest(m);
+            modules[m].setVoltageRequest(v.baseUnitMagnitude());
           }
         }, null, this)
       );
